@@ -1,19 +1,14 @@
-import { GetServerSidePropsContext } from "next";
 import { signIn } from "next-auth/client";
 import { useRouter } from "next/router";
 import { useForm, SubmitHandler, FormProvider } from "react-hook-form";
 
-import { asStringOrNull } from "@lib/asStringOrNull";
 import { useLocale } from "@lib/hooks/useLocale";
-import prisma from "@lib/prisma";
 import { inferSSRProps } from "@lib/types/inferSSRProps";
 
 import { EmailField, PasswordField, TextField } from "@components/form/fields";
 import { HeadSeo } from "@components/seo/head-seo";
 import { Alert } from "@components/ui/Alert";
 import Button from "@components/ui/Button";
-
-import { ssrInit } from "@server/lib/ssr";
 
 type Props = inferSSRProps<typeof getServerSideProps>;
 
@@ -54,7 +49,7 @@ export default function Signup({ email }: Props) {
       method: "POST",
     })
       .then(handleErrors)
-      .then(async () => await signIn("Cal.com", { callbackUrl: (router.query.callbackUrl || "") as string }))
+      .then(async () => await signIn("Calendso", { callbackUrl: (router.query.callbackUrl || "") as string }))
       .catch((err) => {
         methods.setError("apiError", { message: err.message });
       });
@@ -89,10 +84,12 @@ export default function Signup({ email }: Props) {
                   className="flex-grow block w-full min-w-0 lowercase border-gray-300 rounded-none rounded-r-sm focus:ring-black focus:border-black sm:text-sm"
                   {...register("username")}
                   required
+                  placeholder="username"
                 />
                 <EmailField
                   {...register("email")}
                   className="block w-full px-3 py-2 mt-1 bg-gray-100 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-black focus:border-black sm:text-sm"
+                  placeholder="xxxx@email.com"
                 />
                 <PasswordField
                   labelProps={{
@@ -133,56 +130,3 @@ export default function Signup({ email }: Props) {
     </div>
   );
 }
-
-export const getServerSideProps = async (ctx: GetServerSidePropsContext) => {
-  const ssr = await ssrInit(ctx);
-  const token = asStringOrNull(ctx.query.token);
-  if (!token) {
-    return {
-      notFound: true,
-    };
-  }
-  const verificationRequest = await prisma.verificationRequest.findUnique({
-    where: {
-      token,
-    },
-  });
-
-  // for now, disable if no verificationRequestToken given or token expired
-  if (!verificationRequest || verificationRequest.expires < new Date()) {
-    return {
-      notFound: true,
-    };
-  }
-
-  const existingUser = await prisma.user.findFirst({
-    where: {
-      AND: [
-        {
-          email: verificationRequest.identifier,
-        },
-        {
-          emailVerified: {
-            not: null,
-          },
-        },
-      ],
-    },
-  });
-
-  if (existingUser) {
-    return {
-      redirect: {
-        permanent: false,
-        destination: "/auth/login?callbackUrl=" + ctx.query.callbackUrl,
-      },
-    };
-  }
-
-  return {
-    props: {
-      email: verificationRequest.identifier,
-      trpcState: ssr.dehydrate(),
-    },
-  };
-};
